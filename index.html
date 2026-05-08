@@ -653,6 +653,31 @@ body::after{
 }
 .stale-warn.visible{display:flex}
 
+/* ── STATUS EDIT MODAL ── */
+.sm-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);backdrop-filter:blur(4px);z-index:1000;display:flex;align-items:flex-end;justify-content:center;padding:0 0 env(safe-area-inset-bottom,0)}
+.sm-sheet{background:var(--s2);border:1px solid var(--border2);border-bottom:none;border-radius:18px 18px 0 0;width:100%;max-width:480px;padding:24px 24px 32px;display:flex;flex-direction:column;gap:16px}
+.sm-handle{width:36px;height:3px;background:var(--border2);border-radius:2px;margin:0 auto 4px}
+.sm-title{font-family:'Cormorant',serif;font-size:20px;font-weight:600;color:var(--text);letter-spacing:-.3px}
+.sm-sub{font-size:11px;color:var(--dim2);margin-top:-10px}
+.sm-label{font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--dim);margin-bottom:5px}
+.sm-status-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+.sm-status-btn{background:var(--s3);border:1px solid var(--border);border-radius:10px;padding:10px 12px;color:var(--dim2);font-size:11px;letter-spacing:1px;text-transform:uppercase;cursor:pointer;transition:all .15s;text-align:left}
+.sm-status-btn:hover{border-color:var(--border2);color:var(--text)}
+.sm-status-btn.selected{border-color:var(--g);background:var(--g-glow);color:var(--g)}
+.sm-status-btn.sel-voided{border-color:rgba(240,120,64,.5);background:rgba(240,120,64,.08);color:#f07840}
+.sm-status-btn .sm-sb-icon{font-size:15px;margin-bottom:4px;display:block}
+.sm-void-fields{display:flex;flex-direction:column;gap:10px;background:rgba(240,120,64,.05);border:1px solid rgba(240,120,64,.2);border-radius:10px;padding:14px}
+.sm-void-label{font-size:9px;letter-spacing:2px;text-transform:uppercase;color:rgba(240,120,64,.6);margin-bottom:5px}
+.sm-input{background:var(--s3);border:1px solid var(--border);border-radius:8px;padding:9px 12px;color:var(--text);font-size:12px;font-family:inherit;width:100%;box-sizing:border-box;outline:none}
+.sm-input:focus{border-color:var(--border2)}
+.sm-pin-wrap{display:flex;flex-direction:column;gap:6px;background:var(--s3);border:1px solid var(--border);border-radius:10px;padding:14px}
+.sm-actions{display:flex;gap:8px;margin-top:4px}
+.sm-cancel{flex:1;background:transparent;border:1px solid var(--border);border-radius:10px;padding:11px;color:var(--dim2);font-size:12px;cursor:pointer}
+.sm-cancel:hover{border-color:var(--border2);color:var(--text)}
+.sm-submit{flex:2;background:var(--g);border:none;border-radius:10px;padding:11px;color:#07070a;font-size:12px;font-weight:700;letter-spacing:.5px;cursor:pointer;transition:opacity .15s}
+.sm-submit:hover{opacity:.85}
+.sm-submit:disabled{opacity:.4;cursor:not-allowed}
+
 /* ── LEDGER SEARCH ── */
 .search-block{
   width:100%;max-width:640px;padding:0 24px;
@@ -1875,6 +1900,10 @@ function renderAuthentic(d, barcode) {
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v13M7 11l5 5 5-5"/><path d="M3 19h18" stroke-linecap="round"/></svg>
         <span class="btn-export-lbl">Export</span>
       </button>
+      <button class="btn-export" onclick="openStatusModal()" title="Edit receipt status" style="border-color:rgba(196,164,106,.3)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+        <span class="btn-export-lbl">Edit</span>
+      </button>
     </div>
 
     <!-- Receipt Preview -->
@@ -1955,8 +1984,12 @@ function renderVoided(d, barcode) {
 
     </div>
 
-    <div style="padding:0 32px 8px">
-      <button class="btn-reset" onclick="resetResult()">↩ Verify Another Receipt</button>
+    <div style="padding:0 32px 8px;display:flex;gap:8px">
+      <button class="btn-reset" style="flex:1" onclick="resetResult()">↩ Verify Another Receipt</button>
+      <button class="btn-export" onclick="openStatusModal()" title="Edit receipt status" style="border-color:rgba(196,164,106,.3)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+        <span class="btn-export-lbl">Edit</span>
+      </button>
     </div>
 
     <!-- Voided receipt preview (with void stamp) -->
@@ -2278,6 +2311,173 @@ function renderCompromised(barcode, reason, data) {
     </div>
     <div style="padding:0 32px 28px"><button class="btn-reset" onclick="resetResult()">↩ Try Another Receipt</button></div>
   </div>`;
+}
+
+/* ══════════════════════════════════════════════
+   STATUS EDIT MODAL
+   ══════════════════════════════════════════════ */
+
+const ADMIN_PIN = 'ATH2024'; /* ← change this to your PIN */
+
+const STATUS_OPTIONS = [
+  { value: 'paid',    icon: '✅', label: 'Paid'    },
+  { value: 'pending', icon: '⏳', label: 'Pending' },
+  { value: 'partial', icon: '🔶', label: 'Partial' },
+  { value: 'voided',  icon: '🚫', label: 'Void'    },
+];
+
+let _smSelected = null;
+
+function openStatusModal() {
+  if (!isOnline) { showToast('Must be online to edit status', 'error'); return; }
+  const d = window._vd;
+  if (!d) return;
+
+  _smSelected = d.voided ? 'voided' : (d.status || 'paid');
+
+  const overlay = document.createElement('div');
+  overlay.className = 'sm-overlay';
+  overlay.id = 'sm-overlay';
+  overlay.onclick = e => { if (e.target === overlay) closeStatusModal(); };
+
+  overlay.innerHTML = `
+    <div class="sm-sheet">
+      <div class="sm-handle"></div>
+      <div class="sm-title">Edit Receipt Status</div>
+      <div class="sm-sub">${d.receiptNo || window._vbc}</div>
+
+      <div>
+        <div class="sm-label">New Status</div>
+        <div class="sm-status-grid" id="sm-status-grid">
+          ${STATUS_OPTIONS.map(o => `
+            <button class="sm-status-btn${o.value === _smSelected ? (o.value==='voided'?' sel-voided':' selected') : ''}"
+              onclick="smSelectStatus('${o.value}')">
+              <span class="sm-sb-icon">${o.icon}</span>${o.label}
+            </button>`).join('')}
+        </div>
+      </div>
+
+      <div id="sm-void-fields" style="display:${_smSelected==='voided'?'flex':'none'};flex-direction:column;gap:10px">
+        <div class="sm-void-fields">
+          <div class="sm-void-label">Void Details</div>
+          <div>
+            <div class="sm-label">Reason <span style="color:var(--red)">*</span></div>
+            <input class="sm-input" id="sm-void-reason" placeholder="e.g. Duplicate, Client request, Error…">
+          </div>
+          <div>
+            <div class="sm-label">Voided By</div>
+            <input class="sm-input" id="sm-void-by" placeholder="Your name or initials">
+          </div>
+          <div>
+            <div class="sm-label">Notes (optional)</div>
+            <input class="sm-input" id="sm-void-notes" placeholder="Any additional notes…">
+          </div>
+        </div>
+      </div>
+
+      <div class="sm-pin-wrap">
+        <div class="sm-label">Admin PIN</div>
+        <input class="sm-input" id="sm-pin" type="password" placeholder="Enter PIN to confirm" autocomplete="off">
+      </div>
+
+      <div class="sm-actions">
+        <button class="sm-cancel" onclick="closeStatusModal()">Cancel</button>
+        <button class="sm-submit" id="sm-submit-btn" onclick="submitStatusChange()">Apply Change</button>
+      </div>
+    </div>`;
+
+  document.body.appendChild(overlay);
+  setTimeout(() => document.getElementById('sm-pin').focus(), 200);
+}
+
+function smSelectStatus(val) {
+  _smSelected = val;
+  document.querySelectorAll('.sm-status-btn').forEach((btn, i) => {
+    btn.className = 'sm-status-btn';
+    if (STATUS_OPTIONS[i].value === val) {
+      btn.className += val === 'voided' ? ' sel-voided' : ' selected';
+    }
+  });
+  const vf = document.getElementById('sm-void-fields');
+  if (vf) vf.style.display = val === 'voided' ? 'flex' : 'none';
+}
+
+function closeStatusModal() {
+  const el = document.getElementById('sm-overlay');
+  if (el) el.remove();
+}
+
+async function submitStatusChange() {
+  const pin = (document.getElementById('sm-pin')?.value || '').trim();
+  const btn = document.getElementById('sm-submit-btn');
+  const d   = window._vd;
+  const key = window._vbc;
+
+  if (!pin) { showToast('Enter your PIN', 'error'); return; }
+  if (pin !== ADMIN_PIN) { showToast('Incorrect PIN', 'error'); return; }
+  if (!_smSelected) { showToast('Select a status', 'error'); return; }
+
+  if (_smSelected === 'voided') {
+    const reason = (document.getElementById('sm-void-reason')?.value || '').trim();
+    if (!reason) { showToast('Void reason is required', 'error'); return; }
+  }
+
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
+
+  try {
+    const updates = {};
+
+    if (_smSelected === 'voided') {
+      const reason = document.getElementById('sm-void-reason').value.trim();
+      const by     = (document.getElementById('sm-void-by')?.value || '').trim();
+      const notes  = (document.getElementById('sm-void-notes')?.value || '').trim();
+      updates.voided     = true;
+      updates.voidedAt   = Date.now();
+      updates.voidedBy   = by || 'Admin';
+      updates.voidReason = reason;
+      if (notes) updates.voidNotes = notes;
+    } else {
+      updates.status = _smSelected;
+      if (d.voided) {
+        updates.voided     = false;
+        updates.voidedAt   = null;
+        updates.voidedBy   = null;
+        updates.voidReason = null;
+        updates.voidNotes  = null;
+      }
+    }
+
+    await db.ref('receipts/' + key).update(updates);
+
+    /* Update local IDB so offline reads reflect the change */
+    const idb = await openIDB();
+    await new Promise((res, rej) => {
+      const tx  = idb.transaction('receipts', 'readwrite');
+      const req = tx.objectStore('receipts').get(key);
+      req.onsuccess = () => {
+        const merged = Object.assign({}, req.result || {}, updates);
+        tx.objectStore('receipts').put(merged, key);
+        tx.oncomplete = () => { idb.close(); res(); };
+        tx.onerror    = () => { idb.close(); rej(tx.error); };
+      };
+      req.onerror = () => { idb.close(); rej(req.error); };
+    });
+
+    closeStatusModal();
+    showToast('✓ Status updated', 'success');
+
+    const updated = Object.assign({}, d, updates);
+    window._vd = updated;
+    if (updated.voided) renderVoided(updated, key);
+    else renderAuthentic(updated, key);
+
+  } catch(err) {
+    console.error('[StatusEdit]', err);
+    showToast('Failed to save — try again', 'error');
+    btn.disabled = false;
+    btn.textContent = 'Apply Change';
+  }
 }
 
 function resetResult() {
